@@ -17,14 +17,14 @@ import (
 )
 
 var (
-	ntdllPath       = "C:\\Windows\\System32\\ntdll.dll" // We make this a var so the string obfuscator can refactor it
-	kernel32dllPath = "C:\\Windows\\System32\\kernel32.dll"
+	// ntdllPath       = "C:\\Windows\\System32\\ntdll.dll" // We make this a var so the string obfuscator can refactor it
+	// kernel32dllPath = "C:\\Windows\\System32\\kernel32.dll"
 	CurrentToken    windows.Token
+	help = flag.Bool("help", false, "Show help")
+	filepath string
+	arguments string
+	process string
 )
-var help = flag.Bool("help", false, "Show help")
-var filepath string
-var arguments string
-var process string
 
 func parseFlags() {
 	flag.StringVar(&filepath, "filePath", "Seatbelt.exe", "Path to the Assembly file")
