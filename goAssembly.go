@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/sys/windows"
 	"github.com/rawk77/goAssembly/syscalls"
+	"github.com/rawk77/goAssembly/generate"
 )
 
 var (
@@ -67,13 +68,19 @@ func main() {
 
 	assemblyArgsStr := strings.TrimSpace(arguments)
 
+	// Read the file into Bytes
+	donutBytes, err := generate.DonutFromAssembly(assemblyBytes, false, "amd64", assemblyArgsStr, "", "", "" )
+	if err != nil {
+		fmt.Printf("%s", err)
+		return
+	}
 
 	log.Printf("Assembly Path supplied: %v\n", assemblyPath)
 	log.Printf("Assembly Bin size: %v\n", len(assemblyBytes))
 	log.Printf("Assembly Args supplied: %v\n", assemblyArgsStr)
 	log.Printf("Process supplied: %v\n", process)
 
-	resp, err := ExecuteAssembly(assemblyBytes, process)
+	resp, err := ExecuteAssembly(donutBytes, process)
 	if err != nil {
 		fmt.Printf("%s", err)
 		return
